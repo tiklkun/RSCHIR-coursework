@@ -1,5 +1,7 @@
 <?php
 session_start();
+require_once __DIR__ . '/vendor/autoload.php';
+use Firebase\JWT\JWT;
 ?>
 <!DOCTYPE html>
 <html lang="en">

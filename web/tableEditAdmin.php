@@ -1,123 +1,237 @@
 <?php
 session_start();
+require_once __DIR__ . '/vendor/autoload.php';
+use Firebase\JWT\JWT;
+use Firebase\JWT\Key;
 
-if (isset($_SESSION['user_role'])) {
-    // Check if the user's role is 'admin'
-    $isAdmin = ($_SESSION['user_role'] === 'admin');
-} else {
-    // 'role' session variable is not set, assume the user is not an admin
-    $isAdmin = false;
+$headers = apache_request_headers();
+$token = isset($headers['Authorization']) ? str_replace('Bearer ', '', $headers['Authorization']) : null;
+
+if ($token === null) {
+    die("Token is null");
 }
-    if ($isAdmin){
-        // Подключение к базе данных (замените данными вашей базы данных)
-        $servername = "db";
-            $username = "user";
-            $password = "password";
-            $dbname = "modgame"; // Укажите имя вашей базы данных
 
-        $conn = new mysqli($servername, $username, $password, $dbname);
 
-        if ($conn->connect_error) {
-            die("Connection failed: " . $conn->connect_error);
+function validateJwtToken($token) {
+    try {
+        $key = getenv('JWT_SECRET_KEY');
+        if (empty($key)) {
+            throw new Exception("Error: JWT_SECRET_KEY not set in environment");
         }
 
-        // Функция для выполнения запросов к базе данных и вывода результатов
-        function executeQuery($conn, $sql)
-        {
-            $result = $conn->query($sql);
+        $decoded = JWT::decode($token, new Key($key, 'HS256'));
 
-            if ($result === false) {
-                echo "Error: " . $sql . "<br>" . $conn->error;
-            } else {
-                return $result;
-            }
+        // Check if the decoded token has the 'user_role' claim and its value is 'user' or 'admin'
+        if (isset($decoded->userRole) && ($decoded->userRole === "admin")) {
+            return true;
+        } else {
+            return false;
         }
-
-        // Получение имени таблицы из параметра запроса
-        $table = $_GET['table'];
-
-        if (!$table) {
-            echo "Ошибка: Не указана таблица.";
-            exit;
-        }
-
-
-        // Обновление записи
-        if (isset($_POST['update'])) {
-            $updateField = $conn->real_escape_string($_POST['update_field']);
-            $updateValue = $conn->real_escape_string($_POST['update_value']);
-            $primaryKey = $conn->real_escape_string($_POST['primary_key']);
-
-            $sqlDescribe = "DESCRIBE $table";
-            $resultDescribe = executeQuery($conn, $sqlDescribe);
-
-            $primaryKeyName = '';
-            while ($row = $resultDescribe->fetch_assoc()) {
-                if (strpos($row['Key'], 'PRI') !== false) {
-                    $primaryKeyName = $row['Field'];
-                    break;
-                }
-            }
-
-            if (empty($primaryKeyName)) {
-                echo "Ошибка: Таблица не имеет PRIMARY KEY";
-            } else {
-                // Подготовка запроса для обновления
-                $updateSql = "UPDATE $table SET $updateField = '$updateValue' WHERE $primaryKeyName = '$primaryKey'";
-                executeQuery($conn, $updateSql);
-            }
-        }
-
-        // Обработка добавления записи
-        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add'])) {
-            // Получение списка полей таблицы
-            $sqlDescribe = "DESCRIBE $table";
-            $resultDescribe = executeQuery($conn, $sqlDescribe);
-
-            $fields = [];
-            while ($row = $resultDescribe->fetch_assoc()) {
-                if ($row['Extra'] !== 'auto_increment') {
-                    $fields[] = $row['Field'];
-                }
-            }
-
-            // Подготовленный запрос для добавления записи
-            $sqlAdd = "INSERT INTO $table (" . implode(", ", $fields) . ") VALUES (";
-            foreach ($fields as $field) {
-                $sqlAdd .= "'{$_POST[$field]}', ";
-            }
-            $sqlAdd = rtrim($sqlAdd, ', ') . ")";
-            executeQuery($conn, $sqlAdd);
-        }
-
-
-
-        if (isset($_POST['delete'])) {
-            $deleteId = $_POST['delete_id'];
-
-            if (!empty($deleteId) && is_numeric($deleteId)) {
-                // Подготовленный запрос для удаления записи
-                $sqlDelete = "DELETE FROM $table WHERE id_$table = $deleteId";
-                executeQuery($conn, $sqlDelete);
-            }
-        }
-
-        // Получение списка полей таблицы для сортировки
-        $sqlDescribe = "DESCRIBE $table";
-        $resultDescribe = executeQuery($conn, $sqlDescribe);
-
-        $sortableFields = [];
-        while ($row = $resultDescribe->fetch_assoc()) {
-            $sortableFields[] = $row['Field'];
-        }
-
-        // Получение данных таблицы для отображения
-        $sqlSelect = "SELECT * FROM $table";
-        $resultSelect = executeQuery($conn, $sqlSelect);
-
+    } catch (Firebase\JWT\ExpiredException $e) {
+        // Token has expired
+        return false;
+    } catch (Firebase\JWT\BeforeValidException $e) {
+        // Token is not yet valid
+        return false;
+    } catch (Exception $e) {
+        // Other exceptions
+        die("Error: " . $e->getMessage());
     }
-?>
+}
 
+if (!validateJwtToken($token)) {
+    // Unauthorized access
+    die("Unauthorized access");
+}
+
+
+$allowedTables = ['artist', 'asset', 'asset_type', 'game', 'game_genre', 'game_mod', 'mod_type', 'programmer', 'users'];
+$table = $_GET['table'];
+
+if (!$table || !in_array($table, $allowedTables)) {
+    echo "Error: Invalid or missing table";
+    exit;
+}
+
+
+
+// Подключение к базе данных (замените данными вашей базы данных)
+$servername = "db";
+$username = "user";
+$password = "password";
+$dbname = "modgame"; // Укажите имя вашей базы данных
+
+$conn = new mysqli($servername, $username, $password, $dbname);
+
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
+}
+
+// Функция для выполнения запросов к базе данных и вывода результатов
+// Function for executing queries and handling errors
+function executeQuery($conn, $sql)
+{
+    $result = $conn->query($sql);
+
+    if ($result === false) {
+        return ["error" => "Error: " . $sql . "<br>" . $conn->error];
+    } else {
+        return $result;
+    }
+}
+
+
+// Получение имени таблицы из параметра запроса
+$table = $_GET['table'];
+
+if (!$table) {
+    echo "Ошибка: Не указана таблица.";
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['get_all'])) {
+    $sqlSelectAll = "SELECT * FROM $table";
+    $resultSelectAll = executeQuery($conn, $sqlSelectAll);
+
+    if ($resultSelectAll === false) {
+        $response = ["error" => "Error fetching data from the table"];
+    } else {
+        $entries = [];
+        while ($row = $resultSelectAll->fetch_assoc()) {
+            $entries[] = $row;
+        }
+        $response = ["entries" => $entries];
+    }
+
+    // Respond with JSON
+    echo json_encode($response);
+    exit;
+}
+
+// Обновление записи
+// Обновление записи
+if (isset($_POST['update'])) {
+    $updateField = $conn->real_escape_string($_POST['update_field']);
+    $updateValue = $conn->real_escape_string($_POST['update_value']);
+    $primaryKey = $conn->real_escape_string($_POST['primary_key']);
+
+    $sqlDescribe = "DESCRIBE $table";
+    $resultDescribe = executeQuery($conn, $sqlDescribe);
+
+    $primaryKeyName = '';
+    while ($row = $resultDescribe->fetch_assoc()) {
+        if (strpos($row['Key'], 'PRI') !== false) {
+            $primaryKeyName = $row['Field'];
+            break;
+        }
+    }
+
+    if (empty($primaryKeyName)) {
+        $response = ["error" => "Table does not have a PRIMARY KEY"];
+    } else {
+        // Prepare update query
+        $updateSql = "UPDATE $table SET $updateField = '$updateValue' WHERE $primaryKeyName = '$primaryKey'";
+        $result = executeQuery($conn, $updateSql);
+
+        if (isset($result["error"])) {
+            $response = ["error" => $result["error"]];
+        } else {
+            // Fetch the updated fields
+// Fetch the updated fields
+            $sqlSelectUpdated = "SELECT * FROM $table WHERE $primaryKeyName = '$primaryKey'";
+            $resultSelectUpdated = executeQuery($conn, $sqlSelectUpdated);
+
+            if (is_array($resultSelectUpdated) && isset($resultSelectUpdated["error"])) {
+                $response = ["error" => $resultSelectUpdated["error"]];
+            } else {
+                $updatedFields = $resultSelectUpdated->fetch_assoc();
+                $response = ["success" => true, "updatedFields" => $updatedFields];
+            }
+
+        }
+    }
+
+    // Respond with JSON
+    echo json_encode($response);
+    exit;
+}
+
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add'])) {
+    // Получение списка полей таблицы
+    $sqlDescribe = "DESCRIBE $table";
+    $resultDescribe = executeQuery($conn, $sqlDescribe);
+
+    $fields = [];
+    while ($row = $resultDescribe->fetch_assoc()) {
+        if ($row['Extra'] !== 'auto_increment') {
+            $fields[] = $row['Field'];
+        }
+    }
+
+    // Подготовленный запрос для добавления записи
+    $sqlAdd = "INSERT INTO $table (" . implode(", ", $fields) . ") VALUES (";
+    foreach ($fields as $field) {
+        $sqlAdd .= "'{$_POST[$field]}', ";
+    }
+    $sqlAdd = rtrim($sqlAdd, ', ') . ")";
+    
+    // Execute the query
+    $resultAdd = executeQuery($conn, $sqlAdd);
+
+    if (isset($resultAdd["error"])) {
+        // Handle the case where the query execution fails
+        $response = ["error" => $resultAdd["error"]];
+    } else {
+        // Fetch the newly added record
+        $lastInsertId = $conn->insert_id;
+        $sqlSelectNewEntry = "SELECT * FROM $table WHERE id_$table = $lastInsertId";
+        $resultSelectNewEntry = executeQuery($conn, $sqlSelectNewEntry);
+
+        if ($resultSelectNewEntry instanceof mysqli_result) {
+            // Return the new entry in the JSON response
+            $newEntry = $resultSelectNewEntry->fetch_assoc();
+            $response = ["success" => true, "newEntry" => $newEntry];
+        } else {
+            // Handle the case where fetching the new entry fails
+            $response = ["error" => "Error fetching data from the table"];
+        }
+    }
+
+    // Respond with JSON
+    echo json_encode($response);
+    exit;
+}
+
+
+if (isset($_POST['delete'])) {
+    $deleteId = $_POST['delete_id'];
+
+    if (!empty($deleteId) && is_numeric($deleteId)) {
+        // Подготовленный запрос для удаления записи
+        $sqlDelete = "DELETE FROM $table WHERE id_$table = $deleteId";
+        $resultDelete = executeQuery($conn, $sqlDelete);
+
+        if (isset($resultDelete["error"])) {
+            // Handle the case where the query execution fails
+            $response = ["error" => $resultDelete["error"]];
+        } else {
+            // Return success response
+            $response = ["success" => true, "message" => "Record deleted successfully"];
+        }
+    } else {
+        // Handle the case where deleteId is empty or not numeric
+        $response = ["error" => "Invalid deleteId"];
+    }
+
+    // Respond with JSON
+    echo json_encode($response);
+    exit;
+}
+
+
+
+?>
 
 <!DOCTYPE html>
 <html lang="en">
@@ -139,14 +253,12 @@ if (isset($_SESSION['user_role'])) {
     </style>
 </head>
 <body>
-<?php if ($isAdmin): ?>
-<p><a href='adminPanel.php'>назад</a><p>
-<h1>
-    <?php echo $table; ?>
-</h1>
+
+<p><a href='index.php'>назад</a><p>
+<h1><?php echo $table; ?></h1>
 <!-- Обновление записи -->
 <h2>Обновление записи</h2>
-<form method="post" action="tableEditAdmin.php?table=<?php echo $table; ?>">
+<form method="post" action="tableEditUser.php?table=<?php echo $table; ?>">
     <label for="update_field">Название поля для обновления:</label>
     <input type="text" name="update_field" required>
     <label for="update_value">Новое значение:</label>
@@ -158,7 +270,7 @@ if (isset($_SESSION['user_role'])) {
 
 <!-- Добавление записи -->
 <h2>Добавление записи</h2>
-<form method="post" action="tableEditAdmin.php?table=<?php echo $table; ?>">
+<form method="post" action="tableEditUser.php?table=<?php echo $table; ?>">
     <?php
     foreach ($sortableFields as $field) {
         if ($field !== "id_$table") {
@@ -205,14 +317,12 @@ if (isset($_SESSION['user_role'])) {
         foreach ($row as $key => $value) {
             echo "<td>$value</td>";
         }
-        echo "<td><form method='post' action='tableEditAdmin.php?table=$table'>
+        echo "<td><form method='post' action='tableEditUser.php?table=$table'>
                   <input type='hidden' name='delete_id' value='{$row["id_$table"]}'>
                   <input type='submit' name='delete' value='Удалить'></form></td>";
         echo "</tr>";
     }
     ?>
-
-    
 </table>
 
 <script>
@@ -255,10 +365,7 @@ if (isset($_SESSION['user_role'])) {
         }
     }
 </script>
-<?php $conn->close();?>
-<?php else: ?>
-    <p>You do not have access to this page</p>
-<?php endif; ?>
 
 </body>
 </html>
+

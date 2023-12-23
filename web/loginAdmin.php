@@ -1,7 +1,74 @@
 <?php
 session_start();
-?>
+require_once __DIR__ . '/vendor/autoload.php';
+use Firebase\JWT\JWT;
 
+function generateJwtToken($userId, $username) {
+    $key = getenv('JWT_SECRET_KEY');
+    if (empty($key)) {
+        die("Error: JWT_SECRET_KEY not set in environment");
+    }
+    $tokenPayload = array(
+        "iss" => "http://localhost:8080", // Replace with your issuer
+        "aud" => "http://localhost:8080", // Replace with your audience
+        "iat" => time(),
+        "exp" => time() + 3600, // Token expiration time (1 hour)
+        "userId" => $userId,
+        "username" => $username,
+        "userRole" => "admin", 
+    );
+
+    return JWT::encode($tokenPayload, $key, 'HS256'); // Added the algorithm 'HS256'
+}
+
+
+$servername = "db";
+$username = "user";
+$password = "password";
+$dbname = "modgame";  // Specify your database name
+
+$conn = new mysqli($servername, $username, $password, $dbname);
+
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
+}
+
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    $login = $_POST['username'];
+    $password = $_POST['password'];
+
+    $sql = "SELECT id, login, password FROM admin WHERE login = '$login' AND password = '$password'";
+    $result = $conn->query($sql);
+
+    if ($result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        $userId = $row['id'];
+        $username = $row['login'];
+
+        // Generate JWT token
+        $token = generateJwtToken($userId, $username);
+        setcookie("admin_jwt", $token, time() + 3600, "/"); // Replace with your desired cookie settings
+
+        $_SESSION['user_role'] = 'admin';
+        $response = array(
+            'status' => 'success',
+            'message' => 'Admin login successful',
+            'token' => $token
+        );
+    } else {
+        $response = array(
+            'status' => 'error',
+            'message' => 'Неправильный логин или пароль'
+        );
+    }
+
+    header('Content-Type: application/json; charset=utf-8'); // Set the correct content type and encoding
+    echo json_encode($response);
+    exit();
+}
+
+$conn->close();
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -90,37 +157,7 @@ session_start();
         </div>
     </form>
 
-    <?php
 
-    $servername = "db";
-    $username = "user";
-    $password = "password";
-    $dbname = "modgame";  // Укажите имя вашей базы данных
-
-    $conn = new mysqli($servername, $username, $password, $dbname);
-
-    if ($conn->connect_error) {
-        die("Connection failed: " . $conn->connect_error);
-    }
-
-    if ($_SERVER["REQUEST_METHOD"] == "POST") {
-        $login = $_POST['username'];
-        $password = $_POST['password'];
-
-        $sql = "SELECT id, login, password FROM admin WHERE login = '$login' AND password = '$password'";
-        $result = $conn->query($sql);
-
-        if ($result->num_rows > 0) {
-            $_SESSION['user_role'] = 'admin';
-            // Пользователь найден, переход на другую страницу
-            header("Location: adminPanel.php");
-            exit();
-        } else {
-            echo "Неправильный логин или пароль";
-        }
-    }
-    $conn->close();
-    ?>
 </div>
 
 </body>

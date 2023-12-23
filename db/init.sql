@@ -116,10 +116,10 @@ USE modgame;
 -- Create table `game_genre`
 --
 CREATE TABLE game_genre (
-  id_genre int NOT NULL AUTO_INCREMENT,
+  id_game_genre int NOT NULL AUTO_INCREMENT,
   genre_name varchar(50) NOT NULL,
   game_count int NOT NULL,
-  PRIMARY KEY (id_genre)
+  PRIMARY KEY (id_game_genre)
 )
 ENGINE = INNODB,
 AUTO_INCREMENT = 15,
@@ -134,7 +134,7 @@ ROW_FORMAT = DYNAMIC;
 CREATE TABLE game (
   id_game int NOT NULL AUTO_INCREMENT,
   game_name varchar(50) NOT NULL,
-  id_genre int NOT NULL,
+  id_game_genre int NOT NULL,
   release_date date NOT NULL,
   mod_count int NOT NULL,
   PRIMARY KEY (id_game)
@@ -150,8 +150,8 @@ ROW_FORMAT = DYNAMIC;
 -- Create foreign key
 --
 ALTER TABLE game
-ADD CONSTRAINT game_ibfk_1 FOREIGN KEY (id_genre)
-REFERENCES game_genre (id_genre) ON DELETE CASCADE ON UPDATE CASCADE;
+ADD CONSTRAINT game_ibfk_1 FOREIGN KEY (id_game_genre)
+REFERENCES game_genre (id_game_genre) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- Create table `mod_type`
@@ -1149,7 +1149,7 @@ FOR EACH ROW
 BEGIN
   UPDATE game_genre
   SET game_count = game_count + 1
-  WHERE id_genre = NEW.id_genre;
+  WHERE id_game_genre = NEW.id_game_genre;
 END
 $$
 
@@ -1165,13 +1165,13 @@ FOR EACH ROW
 BEGIN
   DECLARE genreID int;
 
-  -- Get the id_genre of the deleted row
-  SET genreID = OLD.id_genre;
+  -- Get the id_game_genre of the deleted row
+  SET genreID = OLD.id_game_genre;
 
   -- Decrease game_count in game_genre by 1
   UPDATE game_genre
   SET game_count = game_count - 1
-  WHERE id_genre = genreID;
+  WHERE id_game_genre = genreID;
 END
 $$
 

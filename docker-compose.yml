@@ -1,7 +1,9 @@
 version: '3'
 services:
   web:
-    build: ./web
+    build:
+      context: ./web
+      dockerfile: Dockerfile
     ports:
       - "8080:80"
     depends_on:
@@ -11,7 +13,9 @@ services:
       MYSQL_USER: user
       MYSQL_PASSWORD: password
       MYSQL_DATABASE: modgame
-
+      JWT_SECRET_KEY: 3e3c384d9f1eccd718df8aedbc36508a364c788cef9f2208c506034980900605
+    volumes:
+      - ./web:/var/www/html
   db:
     image: latest
     build: ./db

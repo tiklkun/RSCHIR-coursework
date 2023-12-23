@@ -1,3 +1,57 @@
+<?php
+$servername = "db";
+$username = "user";
+$password = "password";
+$dbname = "modgame";  // Specify your database name
+
+$conn = new mysqli($servername, $username, $password, $dbname);
+
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
+}
+
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    $username = mysqli_real_escape_string($conn, $_POST['username']);
+    $password = mysqli_real_escape_string($conn, $_POST['password']);
+    $userType = mysqli_real_escape_string($conn, $_POST['user_type']);
+
+    $checkUserQuery = "SELECT * FROM users WHERE username = '$username'";
+    $checkUserResult = $conn->query($checkUserQuery);
+
+    if ($checkUserResult->num_rows > 0) {
+        $response = array(
+            'status' => 'error',
+            'message' => 'User already exists'
+        );
+    } else {
+        $sql = "INSERT INTO users (username, password) VALUES ('$username', '$password')";
+
+        if ($conn->query($sql) === TRUE) {
+            $userId = $conn->insert_id;
+
+            $response = array(
+                'status' => 'success',
+                'message' => 'Registration successful',
+                'user_id' => $userId,
+                'username' => $username,
+                'user_type' => $userType
+            );
+        } else {
+            $response = array(
+                'status' => 'error',
+                'message' => 'Error in registration'
+            );
+        }
+    }
+
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($response);
+    exit();
+}
+
+$conn->close();
+?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -96,47 +150,6 @@
         <button class="form-group button-signin">Войти</button>
     </a>
 
-    <?php
-$servername = "db";
-$username = "user";
-$password = "password";
-$dbname = "modgame";  // Specify your database name
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
-
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $username = mysqli_real_escape_string($conn, $_POST['username']);
-    $password = mysqli_real_escape_string($conn, $_POST['password']);
-    $userType = mysqli_real_escape_string($conn, $_POST['user_type']);
-
-    // Insert user data into the "users" table
-    $sql = "INSERT INTO users (username, password) VALUES ('$username', '$password')";
-    if ($conn->query($sql) === TRUE) {
-        // Get the ID of the newly inserted user
-        $userId = $conn->insert_id;
-
-        // Insert user data into the appropriate table based on user type
-        if ($userType === 'artist') {
-            $sqlArtist = "INSERT INTO artist (artist_name, work_count, rating) VALUES ('$username', 0, 0)";
-            $conn->query($sqlArtist);
-        } elseif ($userType === 'programmer') {
-            $sqlProgrammer = "INSERT INTO programmer (programmer_name, work_count, rating) VALUES ('$username', 0, 0)";
-            $conn->query($sqlProgrammer);
-        }
-
-        header("Location: login.php");
-        exit();
-    } else {
-        echo "Error: " . $sql . "<br>" . $conn->error;
-    }
-}
-
-$conn->close();
-?>
 </div>
 
 </body>
